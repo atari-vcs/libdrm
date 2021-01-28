@@ -13,6 +13,7 @@ confflags = \
 	-Dradeon=true \
 	-Damdgpu=true \
 	-Dlibkms=false \
+	-Dinstall-test-programs=true \
 	$()
 
 # Linux vs. the rest:
@@ -30,7 +31,7 @@ endif
 
 # Intel is only on x86:
 ifneq (,$(filter amd64 i386,$(DEB_HOST_ARCH_CPU)))
-ifneq (,$(filter linux kfreebsd,$(DEB_HOST_ARCH_OS)))
+ifneq (,$(filter linux kfreebsd hurd,$(DEB_HOST_ARCH_OS)))
 	INTEL = yes
 endif
 endif
@@ -94,7 +95,21 @@ override_dh_auto_test:
 
 override_dh_install:
 	find debian/tmp -name '*.la' -delete
-	dh_install --fail-missing
+	dh_install
+
+  ifneq (,$(filter $(DEB_HOST_ARCH_CPU),arm))
+	for file in debian/tmp/usr/bin/exynos_*; do \
+		mv $$file debian/libdrm-tests/usr/bin; \
+	done
+  endif
+  ifneq (,$(filter $(DEB_HOST_ARCH),armhf arm64))
+	for file in debian/tmp/usr/bin/etnaviv*; do \
+		mv $$file debian/libdrm-tests/usr/bin; \
+	done
+  endif
+
+override_dh_missing:
+	dh_missing --fail-missing
 
 override_dh_makeshlibs:
 	dh_makeshlibs -plibdrm2 -V'libdrm2 (>= 2.4.89)' --add-udeb=libdrm2-udeb -- -c4

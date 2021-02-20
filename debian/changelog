@@ -1,3 +1,10 @@
+libdrm (2.4.97-1co1) apertis; urgency=medium
+
+  [ Ritesh Raj Sarraf ]
+  * debian/apertis/component: Set to target
+
+ -- Emanuele Aina <emanuele.aina@collabora.com>  Sat, 20 Feb 2021 00:52:19 +0000
+
 libdrm (2.4.97-1) unstable; urgency=medium
 
   [ Andreas Boll ]

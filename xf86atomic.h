@@ -54,6 +54,7 @@ typedef struct {
 #endif
 
 #if HAVE_LIB_ATOMIC_OPS
+#define AO_REQUIRE_CAS
 #include <atomic_ops.h>
 
 #define HAS_ATOMIC_OPS 1
@@ -100,8 +101,6 @@ typedef struct { LIBDRM_ATOMIC_TYPE atomic; } atomic_t;
 #if !defined(HAS_ATOMIC_OPS)
 #error libdrm requires atomic operations, please define them for your CPU/compiler.
 #endif
-
-#undef HAS_ATOMIC_OPS
 
 static inline int atomic_add_unless(atomic_t *v, int add, int unless)
 {

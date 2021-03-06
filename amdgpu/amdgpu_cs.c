@@ -28,7 +28,7 @@
 #include <pthread.h>
 #include <sched.h>
 #include <sys/ioctl.h>
-#ifdef HAVE_ALLOCA_H
+#if HAVE_ALLOCA_H
 # include <alloca.h>
 #endif
 
@@ -142,6 +142,31 @@ drm_public int amdgpu_cs_ctx_free(amdgpu_context_handle context)
 	return r;
 }
 
+drm_public int amdgpu_cs_ctx_override_priority(amdgpu_device_handle dev,
+                                               amdgpu_context_handle context,
+                                               int master_fd,
+                                               unsigned priority)
+{
+	union drm_amdgpu_sched args;
+	int r;
+
+	if (!dev || !context || master_fd < 0)
+		return -EINVAL;
+
+	memset(&args, 0, sizeof(args));
+
+	args.in.op = AMDGPU_SCHED_OP_CONTEXT_PRIORITY_OVERRIDE;
+	args.in.fd = dev->fd;
+	args.in.priority = priority;
+	args.in.ctx_id = context->id;
+
+	r = drmCommandWrite(master_fd, DRM_AMDGPU_SCHED, &args, sizeof(args));
+	if (r)
+		return r;
+
+	return 0;
+}
+
 drm_public int amdgpu_cs_query_reset_state(amdgpu_context_handle context,
 					   uint32_t *state, uint32_t *hangs)
 {
@@ -163,6 +188,25 @@ drm_public int amdgpu_cs_query_reset_state(amdgpu_context_handle context,
 	return r;
 }
 
+drm_public int amdgpu_cs_query_reset_state2(amdgpu_context_handle context,
+					    uint64_t *flags)
+{
+	union drm_amdgpu_ctx args;
+	int r;
+
+	if (!context)
+		return -EINVAL;
+
+	memset(&args, 0, sizeof(args));
+	args.in.op = AMDGPU_CTX_OP_QUERY_STATE2;
+	args.in.ctx_id = context->id;
+	r = drmCommandWriteRead(context->dev->fd, DRM_AMDGPU_CTX,
+				&args, sizeof(args));
+	if (!r)
+		*flags = args.out.state.flags;
+	return r;
+}
+
 /**
  * Submit command to kernel DRM
  * \param   dev - \c [in]  Device handle
@@ -176,15 +220,15 @@ drm_public int amdgpu_cs_query_reset_state(amdgpu_context_handle context,
 static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 				struct amdgpu_cs_request *ibs_request)
 {
-	union drm_amdgpu_cs cs;
-	uint64_t *chunk_array;
 	struct drm_amdgpu_cs_chunk *chunks;
 	struct drm_amdgpu_cs_chunk_data *chunk_data;
 	struct drm_amdgpu_cs_chunk_dep *dependencies = NULL;
 	struct drm_amdgpu_cs_chunk_dep *sem_dependencies = NULL;
+	amdgpu_device_handle dev = context->dev;
 	struct list_head *sem_list;
 	amdgpu_semaphore_handle sem, tmp;
-	uint32_t i, size, sem_count = 0;
+	uint32_t i, size, num_chunks, bo_list_handle = 0, sem_count = 0;
+	uint64_t seq_no;
 	bool user_fence;
 	int r = 0;
 
@@ -200,23 +244,18 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 
 	size = ibs_request->number_of_ibs + (user_fence ? 2 : 1) + 1;
 
-	chunk_array = alloca(sizeof(uint64_t) * size);
 	chunks = alloca(sizeof(struct drm_amdgpu_cs_chunk) * size);
 
 	size = ibs_request->number_of_ibs + (user_fence ? 1 : 0);
 
 	chunk_data = alloca(sizeof(struct drm_amdgpu_cs_chunk_data) * size);
 
-	memset(&cs, 0, sizeof(cs));
-	cs.in.chunks = (uint64_t)(uintptr_t)chunk_array;
-	cs.in.ctx_id = context->id;
 	if (ibs_request->resources)
-		cs.in.bo_list_handle = ibs_request->resources->handle;
-	cs.in.num_chunks = ibs_request->number_of_ibs;
+		bo_list_handle = ibs_request->resources->handle;
+	num_chunks = ibs_request->number_of_ibs;
 	/* IB chunks */
 	for (i = 0; i < ibs_request->number_of_ibs; i++) {
 		struct amdgpu_cs_ib_info *ib;
-		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
 		chunks[i].chunk_id = AMDGPU_CHUNK_ID_IB;
 		chunks[i].length_dw = sizeof(struct drm_amdgpu_cs_chunk_ib) / 4;
 		chunks[i].chunk_data = (uint64_t)(uintptr_t)&chunk_data[i];
@@ -235,10 +274,9 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 	pthread_mutex_lock(&context->sequence_mutex);
 
 	if (user_fence) {
-		i = cs.in.num_chunks++;
+		i = num_chunks++;
 
 		/* fence chunk */
-		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
 		chunks[i].chunk_id = AMDGPU_CHUNK_ID_FENCE;
 		chunks[i].length_dw = sizeof(struct drm_amdgpu_cs_chunk_fence) / 4;
 		chunks[i].chunk_data = (uint64_t)(uintptr_t)&chunk_data[i];
@@ -251,7 +289,7 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 	}
 
 	if (ibs_request->number_of_dependencies) {
-		dependencies = malloc(sizeof(struct drm_amdgpu_cs_chunk_dep) *
+		dependencies = alloca(sizeof(struct drm_amdgpu_cs_chunk_dep) *
 			ibs_request->number_of_dependencies);
 		if (!dependencies) {
 			r = -ENOMEM;
@@ -268,10 +306,9 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 			dep->handle = info->fence;
 		}
 
-		i = cs.in.num_chunks++;
+		i = num_chunks++;
 
 		/* dependencies chunk */
-		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
 		chunks[i].chunk_id = AMDGPU_CHUNK_ID_DEPENDENCIES;
 		chunks[i].length_dw = sizeof(struct drm_amdgpu_cs_chunk_dep) / 4
 			* ibs_request->number_of_dependencies;
@@ -282,7 +319,7 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 	LIST_FOR_EACH_ENTRY(sem, sem_list, list)
 		sem_count++;
 	if (sem_count) {
-		sem_dependencies = malloc(sizeof(struct drm_amdgpu_cs_chunk_dep) * sem_count);
+		sem_dependencies = alloca(sizeof(struct drm_amdgpu_cs_chunk_dep) * sem_count);
 		if (!sem_dependencies) {
 			r = -ENOMEM;
 			goto error_unlock;
@@ -301,26 +338,23 @@ static int amdgpu_cs_submit_one(amdgpu_context_handle context,
 			amdgpu_cs_reset_sem(sem);
 			amdgpu_cs_unreference_sem(sem);
 		}
-		i = cs.in.num_chunks++;
+		i = num_chunks++;
 
 		/* dependencies chunk */
-		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
 		chunks[i].chunk_id = AMDGPU_CHUNK_ID_DEPENDENCIES;
 		chunks[i].length_dw = sizeof(struct drm_amdgpu_cs_chunk_dep) / 4 * sem_count;
 		chunks[i].chunk_data = (uint64_t)(uintptr_t)sem_dependencies;
 	}
 
-	r = drmCommandWriteRead(context->dev->fd, DRM_AMDGPU_CS,
-				&cs, sizeof(cs));
+	r = amdgpu_cs_submit_raw2(dev, context, bo_list_handle, num_chunks,
+				  chunks, &seq_no);
 	if (r)
 		goto error_unlock;
 
-	ibs_request->seq_no = cs.out.handle;
+	ibs_request->seq_no = seq_no;
 	context->last_seq[ibs_request->ip_type][ibs_request->ip_instance][ibs_request->ring] = ibs_request->seq_no;
 error_unlock:
 	pthread_mutex_unlock(&context->sequence_mutex);
-	free(dependencies);
-	free(sem_dependencies);
 	return r;
 }
 
@@ -649,6 +683,18 @@ drm_public int amdgpu_cs_syncobj_signal(amdgpu_device_handle dev,
 	return drmSyncobjSignal(dev->fd, syncobjs, syncobj_count);
 }
 
+drm_public int amdgpu_cs_syncobj_timeline_signal(amdgpu_device_handle dev,
+						 const uint32_t *syncobjs,
+						 uint64_t *points,
+						 uint32_t syncobj_count)
+{
+	if (NULL == dev)
+		return -EINVAL;
+
+	return drmSyncobjTimelineSignal(dev->fd, syncobjs,
+					points, syncobj_count);
+}
+
 drm_public int amdgpu_cs_syncobj_wait(amdgpu_device_handle dev,
 				      uint32_t *handles, unsigned num_handles,
 				      int64_t timeout_nsec, unsigned flags,
@@ -659,6 +705,39 @@ drm_public int amdgpu_cs_syncobj_wait(amdgpu_device_handle dev,
 
 	return drmSyncobjWait(dev->fd, handles, num_handles, timeout_nsec,
 			      flags, first_signaled);
+}
+
+drm_public int amdgpu_cs_syncobj_timeline_wait(amdgpu_device_handle dev,
+					       uint32_t *handles, uint64_t *points,
+					       unsigned num_handles,
+					       int64_t timeout_nsec, unsigned flags,
+					       uint32_t *first_signaled)
+{
+	if (NULL == dev)
+		return -EINVAL;
+
+	return drmSyncobjTimelineWait(dev->fd, handles, points, num_handles,
+				      timeout_nsec, flags, first_signaled);
+}
+
+drm_public int amdgpu_cs_syncobj_query(amdgpu_device_handle dev,
+				       uint32_t *handles, uint64_t *points,
+				       unsigned num_handles)
+{
+	if (NULL == dev)
+		return -EINVAL;
+
+	return drmSyncobjQuery(dev->fd, handles, points, num_handles);
+}
+
+drm_public int amdgpu_cs_syncobj_query2(amdgpu_device_handle dev,
+					uint32_t *handles, uint64_t *points,
+					unsigned num_handles, uint32_t flags)
+{
+	if (!dev)
+		return -EINVAL;
+
+	return drmSyncobjQuery2(dev->fd, handles, points, num_handles, flags);
 }
 
 drm_public int amdgpu_cs_export_syncobj(amdgpu_device_handle dev,
@@ -701,6 +780,78 @@ drm_public int amdgpu_cs_syncobj_import_sync_file(amdgpu_device_handle dev,
 	return drmSyncobjImportSyncFile(dev->fd, syncobj, sync_file_fd);
 }
 
+drm_public int amdgpu_cs_syncobj_export_sync_file2(amdgpu_device_handle dev,
+						   uint32_t syncobj,
+						   uint64_t point,
+						   uint32_t flags,
+						   int *sync_file_fd)
+{
+	uint32_t binary_handle;
+	int ret;
+
+	if (NULL == dev)
+		return -EINVAL;
+
+	if (!point)
+		return drmSyncobjExportSyncFile(dev->fd, syncobj, sync_file_fd);
+
+	ret = drmSyncobjCreate(dev->fd, 0, &binary_handle);
+	if (ret)
+		return ret;
+
+	ret = drmSyncobjTransfer(dev->fd, binary_handle, 0,
+				 syncobj, point, flags);
+	if (ret)
+		goto out;
+	ret = drmSyncobjExportSyncFile(dev->fd, binary_handle, sync_file_fd);
+out:
+	drmSyncobjDestroy(dev->fd, binary_handle);
+	return ret;
+}
+
+drm_public int amdgpu_cs_syncobj_import_sync_file2(amdgpu_device_handle dev,
+						   uint32_t syncobj,
+						   uint64_t point,
+						   int sync_file_fd)
+{
+	uint32_t binary_handle;
+	int ret;
+
+	if (NULL == dev)
+		return -EINVAL;
+
+	if (!point)
+		return drmSyncobjImportSyncFile(dev->fd, syncobj, sync_file_fd);
+
+	ret = drmSyncobjCreate(dev->fd, 0, &binary_handle);
+	if (ret)
+		return ret;
+	ret = drmSyncobjImportSyncFile(dev->fd, binary_handle, sync_file_fd);
+	if (ret)
+		goto out;
+	ret = drmSyncobjTransfer(dev->fd, syncobj, point,
+				 binary_handle, 0, 0);
+out:
+	drmSyncobjDestroy(dev->fd, binary_handle);
+	return ret;
+}
+
+drm_public int amdgpu_cs_syncobj_transfer(amdgpu_device_handle dev,
+					  uint32_t dst_handle,
+					  uint64_t dst_point,
+					  uint32_t src_handle,
+					  uint64_t src_point,
+					  uint32_t flags)
+{
+	if (NULL == dev)
+		return -EINVAL;
+
+	return drmSyncobjTransfer(dev->fd,
+				  dst_handle, dst_point,
+				  src_handle, src_point,
+				  flags);
+}
+
 drm_public int amdgpu_cs_submit_raw(amdgpu_device_handle dev,
 				    amdgpu_context_handle context,
 				    amdgpu_bo_list_handle bo_list_handle,
@@ -708,12 +859,13 @@ drm_public int amdgpu_cs_submit_raw(amdgpu_device_handle dev,
 				    struct drm_amdgpu_cs_chunk *chunks,
 				    uint64_t *seq_no)
 {
-	union drm_amdgpu_cs cs = {0};
+	union drm_amdgpu_cs cs;
 	uint64_t *chunk_array;
 	int i, r;
 	if (num_chunks == 0)
 		return -EINVAL;
 
+	memset(&cs, 0, sizeof(cs));
 	chunk_array = alloca(sizeof(uint64_t) * num_chunks);
 	for (i = 0; i < num_chunks; i++)
 		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
@@ -738,10 +890,11 @@ drm_public int amdgpu_cs_submit_raw2(amdgpu_device_handle dev,
 				     struct drm_amdgpu_cs_chunk *chunks,
 				     uint64_t *seq_no)
 {
-	union drm_amdgpu_cs cs = {0};
+	union drm_amdgpu_cs cs;
 	uint64_t *chunk_array;
 	int i, r;
 
+	memset(&cs, 0, sizeof(cs));
 	chunk_array = alloca(sizeof(uint64_t) * num_chunks);
 	for (i = 0; i < num_chunks; i++)
 		chunk_array[i] = (uint64_t)(uintptr_t)&chunks[i];
@@ -778,9 +931,10 @@ drm_public int amdgpu_cs_fence_to_handle(amdgpu_device_handle dev,
 					 uint32_t what,
 					 uint32_t *out_handle)
 {
-	union drm_amdgpu_fence_to_handle fth = {0};
+	union drm_amdgpu_fence_to_handle fth;
 	int r;
 
+	memset(&fth, 0, sizeof(fth));
 	fth.in.fence.ctx_id = fence->context->id;
 	fth.in.fence.ip_type = fence->ip_type;
 	fth.in.fence.ip_instance = fence->ip_instance;

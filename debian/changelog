@@ -1,3 +1,100 @@
+libdrm (2.4.104-1apertis0) apertis; urgency=medium
+
+  * Sync from Debian debian/bullseye.
+
+ -- Apertis CI <devel@lists.apertis.org>  Thu, 11 Mar 2021 08:51:40 +0000
+
+libdrm (2.4.104-1) unstable; urgency=medium
+
+  * New upstream release.
+  * Add signing-key from Simon Ser.
+  * control: Manpages now need python3-docutils instead of docbook-xsl
+    to build, make it so.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 28 Jan 2021 12:18:32 +0200
+
+libdrm (2.4.103-2) unstable; urgency=medium
+
+  * hurd-port.diff: Dropped. (Closes: #975658)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Fri, 27 Nov 2020 09:32:38 +0200
+
+libdrm (2.4.103-1) unstable; urgency=medium
+
+  * New upstream release. (Closes: #970304)
+  * control, rules, hurd-port.diff: Add support for Hurd. (Closes:
+    #909436)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 10 Nov 2020 19:51:20 +0200
+
+libdrm (2.4.102-1) unstable; urgency=medium
+
+  * New upstream release.
+  * fix-realpath-vs-firefox.diff: Dropped, upstream.
+  * libdrm-tests.install: Added /usr/bin/drmdevice.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Mon, 22 Jun 2020 15:33:54 +0300
+
+libdrm (2.4.101-2) unstable; urgency=medium
+
+  * fix-realpath-vs-firefox.diff: Fix webgl on intel with firefox.
+    (Closes: #956665) (LP: #1872586)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Tue, 14 Apr 2020 16:32:57 +0300
+
+libdrm (2.4.101-1) unstable; urgency=medium
+
+  * New upstream release.
+  * source, watch: Upstream provides only xz tarballs, bump source to
+    3.0 (quilt).
+  * Add my key to signing-key.asc.
+  * control: Use debhelper-compat, bump to 12.
+  * control: Bump policy to 4.5.0.
+  * local-options: Update extend-diff-ignore.
+  * symbols: Updated.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Fri, 03 Apr 2020 21:49:01 +0300
+
+libdrm (2.4.100-4) unstable; urgency=medium
+
+  * rules: Override dh_missing.
+  * rules: Include additional test binaries on arm. (Closes: #944752)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 21 Nov 2019 14:47:00 +0200
+
+libdrm (2.4.100-3) unstable; urgency=medium
+
+  * Revert dropping libdrm-tests, since the package ended up in NEW
+    anyway.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 07 Nov 2019 09:19:11 +0200
+
+libdrm (2.4.100-2) unstable; urgency=medium
+
+  * control, rules: Disable libdrm-tests, 2.4.100 is needed for mesa 19.3
+    now and not after waiting for the NEW queue to clear.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 06 Nov 2019 20:04:53 +0200
+
+libdrm (2.4.100-1) experimental; urgency=medium
+
+  [ Timo Aaltonen ]
+  * New upstream release. (Closes: #943777)
+  * symbols: Updated.
+
+  [ Rohan Garg ]
+  * Add a libdrm-tests package. (Closes: #868898)
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 31 Oct 2019 23:27:08 +0200
+
+libdrm (2.4.99-1) unstable; urgency=medium
+
+  * New upstream release. (Closes: #934494)
+  * 02_kfreebsd.diff: Dropped, upstream.
+  * symbols: Updated.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Mon, 12 Aug 2019 12:01:03 +0300
+
 libdrm (2.4.97-1co1) apertis; urgency=medium
 
   [ Ritesh Raj Sarraf ]

@@ -84,6 +84,7 @@ libdrm.so.2 libdrm2 #MINVER#
  drmHashLookup@Base 2.3.1
  drmHashNext@Base 2.3.1
  drmIoctl@Base 2.4.3
+ drmIsKMS@Base 2.4.105
  drmIsMaster@Base 2.4.99
  drmMalloc@Base 2.3.1
  drmMap@Base 2.3.1

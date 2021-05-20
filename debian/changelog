@@ -1,8 +1,30 @@
-libdrm (2.4.104-1apertis0) apertis; urgency=medium
+libdrm (2.4.105-3vcs0) vcs; urgency=medium
 
-  * Sync from Debian debian/bullseye.
+  * Merge updates from debian/experimental.
 
- -- Apertis CI <devel@lists.apertis.org>  Thu, 11 Mar 2021 08:51:40 +0000
+ -- Christopher Obbard <chris.obbard@collabora.com>  Thu, 20 May 2021 10:54:38 +0100
+
+libdrm (2.4.105-3) experimental; urgency=medium
+
+  * Revert a commit causing additional dependencies to be added to *.pc.in.
+    Also drop libpciaccess-dev from libdrm-dev Depends.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Sat, 08 May 2021 22:52:07 +0300
+
+libdrm (2.4.105-2) experimental; urgency=medium
+
+  * control: Add libpciaccess-dev to libdrm-dev depends.
+  * revert-set-fb-modifiers-flag.diff: Revert a commit which broke
+    chrome on certain setups.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Wed, 05 May 2021 18:04:17 +0300
+
+libdrm (2.4.105-1) experimental; urgency=medium
+
+  * New upstream release. (LP: #1923880)
+  * symbols: Updated.
+
+ -- Timo Aaltonen <tjaalton@debian.org>  Thu, 15 Apr 2021 08:45:32 +0300
 
 libdrm (2.4.104-1) unstable; urgency=medium
 
